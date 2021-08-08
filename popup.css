@@ -1,0 +1,28 @@
+body {
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 12px;
+
+  width: 100px;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  outline: none;
+  margin: 5px;
+  padding: 5px;
+  border: none;
+  border-radius: 2px;
+
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 12px;
+}
+
+button:hover {
+  box-shadow: 0 0 0 2px white,
+              0 0 0 4px black;
+}
+
+.hidden {
+  display: none;
+}
