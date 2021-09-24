@@ -1,93 +1,65 @@
+import GateExchange from './gate.js';
+import CoinbaseExchange from './coinbase.js';
+
+const EXCHANGE_TYPES = {
+  NOT_SUPPORTED: 'NOT_SUPPORTED',
+  GATE: 'GATE',
+  COINBASE: 'COINBASE',
+}
+
 run();
 
 async function run() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-  const errorMessage = document.getElementById("errorMessage");
-  if (!/.*gate\.io.*/i.test(tab.url)) {
-    errorMessage.classList.remove('hidden');
-    return;
+  const exchangeType = getExchangeType(tab.url);
+
+  let exchange;
+  switch(exchangeType) {
+    case EXCHANGE_TYPES.GATE: {
+      exchange = GateExchange;
+      break;
+    }
+    case EXCHANGE_TYPES.COINBASE: {
+      exchange = CoinbaseExchange;
+      break;
+    }
+    case EXCHANGE_TYPES.NOT_SUPPORTED:
+    default: {
+      const errorMessage = document.getElementById("errorMessage");
+      errorMessage.classList.remove('hidden');
+      return;
+    }
   }
 
-  let pair = null;
-
-  const downloadCurrent = document.getElementById("downloadCurrent");
-  const tradeScreenMatch = tab.url.match(/.*gate\.io.*\/trade\/(\w*_\w*)$/i);
-
-  if (tradeScreenMatch && tradeScreenMatch.length > 1) {
-    pair = tradeScreenMatch[1];
+  const pair = exchange.getPair(tab.url);
+  if (pair) {
     downloadCurrent.classList.remove('hidden');
     downloadCurrent.innerText = pair;
+    downloadCurrent.addEventListener("click", () => exportOrdersHistory(tab.id, pair, exchange));
   }
-
-  downloadCurrent.addEventListener("click", () => exportOrdersHistory(tab.id, pair));
 
   const downloadAll = document.getElementById("downloadAll");
   downloadAll.classList.remove('hidden');
-  downloadAll.addEventListener("click", () => exportOrdersHistory(tab.id, pair));
+  downloadAll.addEventListener("click", () => exportOrdersHistory(tab.id, undefined, exchange));
 }
 
+function getExchangeType(url) {
+  if (/.*gate\.io.*/i.test(url)) {
+    return EXCHANGE_TYPES.GATE;
+  }
 
-async function exportOrdersHistory(tabId, pair) {
+  if (/.*pro\.coinbase\.com.*/i.test(url)) {
+    return EXCHANGE_TYPES.COINBASE;
+  }
+  
+  return EXCHANGE_TYPES.NOT_SUPPORTED
+}
+
+function exportOrdersHistory(tabId, pair, exchange) { 
   chrome.scripting.executeScript({
     target: { tabId },
-    func: fetchOrders,
-    args: [pair],
+    func: exchange.fetchOrders,
+    args: pair ? [pair]: [],
   });
-}
-
-async function fetchOrders(pair) {
-  const LIMIT = 1000;
-  const allOrders = pair ? 0 : 1;
-
-  let done = false;
-  let page = 1;
-  let res = [];
-
-  while (!done) {
-    let url = `/json_svr/query?all_orders=${allOrders}&type=history_deal&page=${page}&limit=${LIMIT}`;
-    if (pair) {
-      url += `&symbol=${pair}`;
-    }
-
-    const response = await fetch(url);
-    const { data: chunk } = await response.json();
-
-    if (!chunk || !chunk.length || chunk.length < LIMIT) {
-      done = true;
-    }
-
-    res = res.concat(chunk || []);
-    page++;
-  }
-
-  if (!res.length) {
-    return;
-  }
-
-  const url = buildUrl(res);
-  const fileName = `${allOrders ? 'ALL' : pair} ${(new Date()).toLocaleString().replace(/\/|:/g, '-')}.csv`
-  downloadFile(url, fileName);
-
-  function buildUrl(rows) {
-    let csv = "data:text/csv;charset=utf-8,";
-    const keys = Object.keys(rows[0]);
-
-    csv += keys.join(',') + '\n';
-    csv += rows.map(row => Object.values(row).join(',')).join('\n');
-
-    return encodeURI(csv);
-  }
-
-  function downloadFile(url, fileName) {
-    const a = document.createElement("a");
-    a.download = fileName;
-    a.href = url;
-    a.click();
-
-    setTimeout(() => {
-      a.remove();
-      URL.revokeObjectURL(url);
-    }, 10000);
-  }
 }
