@@ -15,7 +15,7 @@ async function run() {
   const exchangeType = getExchangeType(tab.url);
 
   let exchange;
-  switch(exchangeType) {
+  switch (exchangeType) {
     case EXCHANGE_TYPES.GATE: {
       exchange = GateExchange;
       break;
@@ -34,6 +34,7 @@ async function run() {
 
   const pair = exchange.getPair(tab.url);
   if (pair) {
+    const downloadCurrent = document.getElementById("downloadCurrent");
     downloadCurrent.classList.remove('hidden');
     downloadCurrent.innerText = pair;
     downloadCurrent.addEventListener("click", () => exportOrdersHistory(tab.id, pair, exchange));
@@ -42,6 +43,8 @@ async function run() {
   const downloadAll = document.getElementById("downloadAll");
   downloadAll.classList.remove('hidden');
   downloadAll.addEventListener("click", () => exportOrdersHistory(tab.id, undefined, exchange));
+
+  document.getElementById("rawLabel").classList.remove('hidden');
 }
 
 function getExchangeType(url) {
@@ -52,14 +55,16 @@ function getExchangeType(url) {
   if (/.*pro\.coinbase\.com.*/i.test(url)) {
     return EXCHANGE_TYPES.COINBASE;
   }
-  
+
   return EXCHANGE_TYPES.NOT_SUPPORTED
 }
 
-function exportOrdersHistory(tabId, pair, exchange) { 
+function exportOrdersHistory(tabId, pair, exchange) {
+  const isRaw = document.getElementById("isRaw").checked;
+
   chrome.scripting.executeScript({
     target: { tabId },
     func: exchange.fetchOrders,
-    args: pair ? [pair]: [],
+    args: pair ? [isRaw, pair] : [isRaw],
   });
 }

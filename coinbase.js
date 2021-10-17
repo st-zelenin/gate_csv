@@ -8,7 +8,7 @@ function getPair(url) {
   return undefined;
 }
 
-async function fetchOrders(pair) {
+async function fetchOrders(isRaw, pair) {
   const LIMIT = 1000;
   const allOrders = pair ? 0 : 1;
 
@@ -31,7 +31,7 @@ async function fetchOrders(pair) {
       status: 'done',
     }
 
-    const url = 'https://api.pro.coinbase.com/orders?' + new URLSearchParams(params);
+    const url = 'https://api.pro.coinbase.com/orders?' + new URLSearchParams(params) + '&status=open';
 
     const response = await fetch(url, { headers: { 'cb-session': session.id } });
     cursorId = response.headers.get('cb-before');
