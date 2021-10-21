@@ -57,7 +57,7 @@ async function fetchOrders(isRaw, pair) {
     let csv = "data:text/csv;charset=utf-8,";
 
     for (const [name, market] of markets) {
-      const keys = market.buy.trades.length ? Object.keys(market.buy.trades[0]) : market.sell.trades[0];
+      const keys = market.buy.trades.length ? Object.keys(market.buy.trades[0]) : Object.keys(market.sell.trades[0]);
 
       csv += `${name}\n\n`;
       csv += writeCategory(market.buy, keys);
