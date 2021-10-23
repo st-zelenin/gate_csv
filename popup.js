@@ -56,15 +56,26 @@ function getExchangeType(url) {
     return EXCHANGE_TYPES.COINBASE;
   }
 
-  return EXCHANGE_TYPES.NOT_SUPPORTED
+  return EXCHANGE_TYPES.NOT_SUPPORTED;
 }
 
 function exportOrdersHistory(tabId, pair, exchange) {
   const isRaw = document.getElementById("isRaw").checked;
 
+  document.getElementById("loading").classList.remove('hidden');
+
   chrome.scripting.executeScript({
     target: { tabId },
     func: exchange.fetchOrders,
     args: pair ? [isRaw, pair] : [isRaw],
+  }, () => {
+    const listener = message => {
+      if ('gate.csv:success' === message || 'gate.csv:error' === message) {
+        chrome.runtime.onMessage.removeListener(listener);
+        document.getElementById("loading").classList.add('hidden');
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(listener);
   });
 }

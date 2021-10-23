@@ -9,37 +9,46 @@ function getPair(url) {
 }
 
 async function fetchOrders(isRaw, pair) {
-  const LIMIT = 1000;
-  const allOrders = pair ? 0 : 1;
-
-  let done = false;
-  let page = 1;
-  let res = [];
-
-  while (!done) {
-    let url = `/json_svr/query?all_orders=${allOrders}&type=history_deal&page=${page}&limit=${LIMIT}`;
-    if (pair) {
-      url += `&symbol=${pair}`;
-    }
-
-    const response = await fetch(url);
-    const { data: chunk } = await response.json();
-
-    if (!chunk || !chunk.length || chunk.length < LIMIT) {
-      done = true;
-    }
-
-    res = res.concat(chunk || []);
-    page++;
+  try {
+    await importData();
+    chrome.runtime.sendMessage('gate.csv:success');
+  } catch (err) {
+    chrome.runtime.sendMessage('gate.csv:error');
   }
 
-  if (!res.length) {
-    return;
-  }
+  async function importData() {
+    const LIMIT = 1000;
+    const allOrders = pair ? 0 : 1;
 
-  const url = isRaw ? buildRawDataUrl(res) : buildParsedDataUrl(res);
-  const fileName = `GATE-${allOrders ? 'ALL' : pair} ${(new Date()).toLocaleString().replace(/\/|:/g, '-')}.csv`
-  downloadFile(url, fileName);
+    let done = false;
+    let page = 1;
+    let res = [];
+
+    while (!done) {
+      let url = `/json_svr/query?all_orders=${allOrders}&type=history_deal&page=${page}&limit=${LIMIT}`;
+      if (pair) {
+        url += `&symbol=${pair}`;
+      }
+
+      const response = await fetch(url);
+      const { data: chunk } = await response.json();
+
+      if (!chunk || !chunk.length || chunk.length < LIMIT) {
+        done = true;
+      }
+
+      res = res.concat(chunk || []);
+      page++;
+    }
+
+    if (!res.length) {
+      return;
+    }
+
+    const url = isRaw ? buildRawDataUrl(res) : await buildParsedDataUrl(res);
+    const fileName = `GATE-${allOrders ? 'ALL' : pair} ${(new Date()).toLocaleString().replace(/\/|:/g, '-')}.csv`
+    downloadFile(url, fileName);
+  }
 
   function buildRawDataUrl(rows) {
     let csv = "data:text/csv;charset=utf-8,";
@@ -51,7 +60,8 @@ async function fetchOrders(isRaw, pair) {
     return encodeURI(csv);
   }
 
-  function buildParsedDataUrl(raw) {
+  async function buildParsedDataUrl(raw) {
+    const tickers = await getTickers(pair);
     const markets = parseMarkets(raw);
 
     let csv = "data:text/csv;charset=utf-8,";
@@ -59,13 +69,41 @@ async function fetchOrders(isRaw, pair) {
     for (const [name, market] of markets) {
       const keys = market.buy.trades.length ? Object.keys(market.buy.trades[0]) : Object.keys(market.sell.trades[0]);
 
-      csv += `${name}\n\n`;
+      const currencyPair = name.replace('/', '_');
+      const lastPrice = getLastPrice(currencyPair, tickers);
+      const balance = await getBalance(currencyPair);
+
+      csv += `${name},,,,,curr. price:,${lastPrice || ''},vol. curr.:,${balance || ''}\n`;
+      csv += `,,,,,avg. buy:,${market.buy.price},vol. buy:,${market.buy.volume}\n`;
+      csv += `,,,,,avg. sell:,${market.sell.price},vol. sell:,${market.sell.volume}\n`;
+      csv += '\n';
+
+      // csv += `,,,,,x1.5 - 1,${market.buy.price * 1.5},${market.buy.volume * 0.3}\n`;
+      // csv += `,,,,,x1.5 - 2,${market.buy.price * 2.25},${market.buy.volume * 0.21}\n`;
+      // csv += `,,,,,x1.5 - 3,${market.buy.price * 3.375},${market.buy.volume * 0.063}\n`;
+      // csv += '\n';
+
       csv += writeCategory(market.buy, keys);
       csv += writeCategory(market.sell, keys);
       csv += '\n';
     }
 
     return encodeURI(csv);
+  }
+
+  async function getTickers(pair) {
+    try {
+      let url = 'https://api.gateio.ws/api/v4/spot/tickers';
+      if (pair) {
+        url += `?currency_pair=${pair}`;
+      }
+
+      const res = await fetch(url);
+      return await res.json();
+    } catch (err) {
+      console.warn('failed to fetch tickers:', err);
+      return [];
+    }
   }
 
   function parseMarkets(raw) {
@@ -101,6 +139,31 @@ async function fetchOrders(isRaw, pair) {
 
       return res;
     }, new Map());
+  }
+
+  function getLastPrice(currencyPair, tickers) {
+    if (!tickers || !tickers.length) {
+      return 0;
+    }
+
+    const ticker = tickers.find(({ currency_pair }) => currency_pair === currencyPair);
+    return ticker ? ticker.last : 0;
+  }
+
+  async function getBalance(currencyPair) {
+    try {
+      const options = { method: 'GET', headers: { Accept: 'application/json' } };
+      const url = `/json_svr/query/?symbol=${currencyPair}&all_orders=0&type=limit_price`;
+
+      const response = await fetch(url, options);
+      const data = await response.json();
+
+      return (data.order || [])
+        .filter(({ type }) => type === 'Sell')
+        .reduce((res, { vol }) => res + Number(vol), data.balances[0]);
+    } catch (err) {
+      return 0;
+    }
   }
 
   function writeCategory(category, keys) {

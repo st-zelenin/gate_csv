@@ -9,50 +9,58 @@ function getPair(url) {
 }
 
 async function fetchOrders(isRaw, pair) {
-  const LIMIT = 1000;
-  const allOrders = pair ? 0 : 1;
+  try {
+    await importData();
+    chrome.runtime.sendMessage('gate.csv:success');
+  } catch (err) {
+    chrome.runtime.sendMessage('gate.csv:error');
+  }
 
-  let done = false;
-  let page = 0;
-  let res = [];
-  let cursorId = '';
+  async function importData() {
+    const LIMIT = 1000;
 
-  while (!done) {
+    let done = false;
+    let page = 0;
+    let res = [];
+    let cursorId = '';
+
     const activePortfolio = JSON.parse(localStorage.getItem('active-portfolio'));
     const session = JSON.parse(localStorage.getItem('session'));
 
-    const params = {
-      profile_id: activePortfolio,
-      product_id: pair || '',
-      // sortedBy: 'price',
-      // sorting: 'asc',
-      limit: LIMIT,
-      after: cursorId,
-      status: 'done',
+    while (!done) {
+      const params = {
+        profile_id: activePortfolio,
+        product_id: pair || '',
+        // sortedBy: 'price',
+        // sorting: 'asc',
+        limit: LIMIT,
+        after: cursorId,
+        status: 'done',
+      }
+
+      const url = 'https://api.pro.coinbase.com/orders?' + new URLSearchParams(params); // + '&status=open';
+
+      const response = await fetch(url, { headers: { 'cb-session': session.id } });
+      cursorId = response.headers.get('cb-before');
+
+      const chunk = await response.json();
+
+      if (!chunk || !chunk.length || chunk.length < LIMIT) {
+        done = true;
+      }
+
+      res = res.concat(chunk || []);
+      page++;
     }
 
-    const url = 'https://api.pro.coinbase.com/orders?' + new URLSearchParams(params); // + '&status=open';
-
-    const response = await fetch(url, { headers: { 'cb-session': session.id } });
-    cursorId = response.headers.get('cb-before');
-
-    const chunk = await response.json();
-
-    if (!chunk || !chunk.length || chunk.length < LIMIT) {
-      done = true;
+    if (!res.length) {
+      return;
     }
 
-    res = res.concat(chunk || []);
-    page++;
+    const url = isRaw ? buildRawDataUrl(res) : await buildParsedDataUrl(res, balances);
+    const fileName = `COINBASE-${pair ? pair : 'ALL'} ${(new Date()).toLocaleString().replace(/\/|:/g, '-')}.csv`
+    downloadFile(url, fileName);
   }
-
-  if (!res.length) {
-    return;
-  }
-
-  const url = isRaw ? buildRawDataUrl(res) : buildParsedDataUrl(res);
-  const fileName = `COINBASE-${pair ? pair : 'ALL'} ${(new Date()).toLocaleString().replace(/\/|:/g, '-')}.csv`
-  downloadFile(url, fileName);
 
   function buildRawDataUrl(rows) {
     let csv = "data:text/csv;charset=utf-8,";
@@ -63,8 +71,9 @@ async function fetchOrders(isRaw, pair) {
 
     return encodeURI(csv);
   }
-  
-  function buildParsedDataUrl(raw) {
+
+  async function buildParsedDataUrl(raw) {
+    const balances = await fetchBalances(session.id);
     const markets = parseMarkets(raw);
 
     let csv = "data:text/csv;charset=utf-8,";
@@ -72,13 +81,30 @@ async function fetchOrders(isRaw, pair) {
     for (const [name, market] of markets) {
       const keys = market.buy.trades.length ? Object.keys(market.buy.trades[0]) : Object.keys(market.sell.trades[0]);
 
-      csv += `${name}\n\n`;
+      const lastPrice = await getLastPrice(name);
+      const balance = findBalance(name, balances);
+
+      csv += `${name},,,,curr. price:,${lastPrice || ''},vol. curr.:,${balance || ''}\n`;
+      csv += `,,,,avg. buy:,${market.buy.price},vol. buy:,${market.buy.volume}\n`;
+      csv += `,,,,avg. sell:,${market.sell.price},vol. sell:,${market.sell.volume}\n`;
+      csv += '\n';
+
       csv += writeCategory(market.buy, keys);
       csv += writeCategory(market.sell, keys);
       csv += '\n';
     }
 
     return encodeURI(csv);
+  }
+
+  async function fetchBalances(sessionId) {
+    try {
+      const response = await fetch(`https://api.pro.coinbase.com/accounts/all`, { headers: { 'cb-session': sessionId } });
+      return await response.json();
+    } catch (err) {
+      console.warn('failed to get balances');
+      return [];
+    }
   }
 
   function parseMarkets(raw) {
@@ -113,6 +139,30 @@ async function fetchOrders(isRaw, pair) {
 
       return res;
     }, new Map());
+  }
+
+  async function getLastPrice(product_id) {
+    try {
+      const options = { method: 'GET', headers: { Accept: 'application/json' } };
+
+      const response = await fetch(`https://api.exchange.coinbase.com/products/${product_id}/stats`, options);
+      const stats = await response.json();
+      return stats.last;
+    } catch (err) {
+      console.warn('failed to fetch last price:', err);
+      return 0;
+    }
+  }
+
+  function findBalance(product_id, balances) {
+    try {
+      const token = product_id.split('-')[0];
+      const balance = balances.find(({ currency }) => currency === token);
+
+      return balance.balance;
+    } catch {
+      return 0;
+    }
   }
 
   function writeCategory(category, keys) {

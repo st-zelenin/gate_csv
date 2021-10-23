@@ -1,6 +1,6 @@
 {
   "name": "gate.csv",
-  "description": "Gate.io & CoinBase Pro trade history export to CSV",
+  "description": "Gate.io & Coinbase Pro trade history export to CSV",
   "version": "2.0",
   "manifest_version": 3,
   "background": {
