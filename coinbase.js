@@ -57,7 +57,7 @@ async function fetchOrders(isRaw, pair) {
       return;
     }
 
-    const url = isRaw ? buildRawDataUrl(res) : await buildParsedDataUrl(res, balances);
+    const url = isRaw ? buildRawDataUrl(res) : await buildParsedDataUrl(res, session.id);
     const fileName = `COINBASE-${pair ? pair : 'ALL'} ${(new Date()).toLocaleString().replace(/\/|:/g, '-')}.csv`
     downloadFile(url, fileName);
   }
@@ -72,8 +72,8 @@ async function fetchOrders(isRaw, pair) {
     return encodeURI(csv);
   }
 
-  async function buildParsedDataUrl(raw) {
-    const balances = await fetchBalances(session.id);
+  async function buildParsedDataUrl(raw, sessionId) {
+    const balances = await fetchBalances(sessionId);
     const markets = parseMarkets(raw);
 
     let csv = "data:text/csv;charset=utf-8,";
