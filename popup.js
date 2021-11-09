@@ -32,6 +32,10 @@ async function run() {
     }
   }
 
+  const getRecentFilled = document.getElementById("getRecentFilled");
+  getRecentFilled.classList.remove('hidden');
+  getRecentFilled.addEventListener("click", () => showRecentFilled(tab.id, exchange));
+
   const pair = exchange.getPair(tab.url);
   if (pair) {
     const downloadCurrent = document.getElementById("downloadCurrent");
@@ -77,5 +81,15 @@ function exportOrdersHistory(tabId, pair, exchange) {
     };
 
     chrome.runtime.onMessage.addListener(listener);
+  });
+}
+
+function showRecentFilled(tabId, exchange) {
+  chrome.scripting.executeScript({
+    target: { tabId },
+    func: exchange.showRecentFilled,
+    args: [],
+  }, () => {
+    window.close();
   });
 }

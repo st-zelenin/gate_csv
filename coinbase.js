@@ -192,7 +192,120 @@ async function fetchOrders(isRaw, pair) {
   }
 }
 
+async function showRecentFilled() {
+  const LIMIT = 1000;
+
+  let done = false;
+  let page = 0;
+  let res = [];
+  let cursorId = '';
+
+  const activePortfolio = JSON.parse(localStorage.getItem('active-portfolio'));
+  const session = JSON.parse(localStorage.getItem('session'));
+
+  while (!done) {
+    const params = {
+      profile_id: activePortfolio,
+      limit: LIMIT,
+      after: cursorId,
+      status: 'done',
+    }
+
+    const url = 'https://api.pro.coinbase.com/orders?' + new URLSearchParams(params); // + '&status=open';
+
+    const response = await fetch(url, { headers: { 'cb-session': session.id } });
+    cursorId = response.headers.get('cb-before');
+
+    const chunk = await response.json();
+
+    if (!chunk || !chunk.length || chunk.length < LIMIT) {
+      done = true;
+    }
+
+    res = res.concat(chunk || []);
+    page++;
+  }
+
+  if (!res.length) {
+    return;
+  }
+
+  res = res.sort((a, b) => {
+    const d1 = Date.parse(a.done_at);
+    const d2 = Date.parse(b.done_at);
+
+    if (d1 > d2) {
+      return -1;
+    }
+
+    if (d1 < d2) {
+      return 1;
+    }
+
+    return 0;
+  })
+
+  const overlay = document.createElement('div');
+
+  let innerHTML = `<div style="
+    z-index: 1;
+    position: absolute;
+    height: 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    background-color: rgba(0, 0, 0, 0.5);"
+  >`;
+  innerHTML += '<div style="background-color: white; max-height: 50%; max-width: 75%; font-size: 14px; font-family: inherit;">';
+  innerHTML += '<div style="height: 100%; overflow: scroll; padding: 10px;">';
+  innerHTML += '<table style="border-spacing: 10px;border-collapse: separate;">';
+
+  for (const order of res) {
+    const date = new Date(Date.parse(order.done_at));
+    const total = Number(order.executed_value);
+    const size = Number(order.size || order.filled_size);
+    const price = Number(order.price || total / size);
+    const side = order.side.toUpperCase();
+
+    innerHTML += `<tr>
+      <td>${date.toLocaleDateString()}</td>
+      <td>${date.toLocaleTimeString()}</td>
+      <td ${side === "SELL" ? "style=\"background-color: lightgreen;\"" : "style=\"background-color: lightcoral;\""}>
+        ${order.side.toUpperCase()}
+      </td>
+      <td>${order.product_id}</td>
+      <td>${price.toFixed(2)}</td>
+      <td>${size.toFixed(2)}</td>
+      <td>${total.toFixed(2)}</td>
+    </tr>`;
+  }
+  innerHTML += '</table>'
+  innerHTML += '</div>';
+  innerHTML += `<div style="display: flex; justify-content: center; padding: 10px; background-color: white;">
+    <button style="
+      padding: 5px 10px;
+      border-radius: 5px;
+      background-color: inherit;
+      border: solid 1px darkgray;
+      cursor: pointer;">CLOSE
+    </button>
+  </div>`;
+  innerHTML += '</div>';
+  innerHTML += '</div>';
+
+  overlay.innerHTML = innerHTML;
+  document.body.appendChild(overlay);
+
+  const close = overlay.querySelector('button');
+  close.addEventListener('click', () => {
+    overlay.remove();
+  });
+}
+
 export default {
   getPair,
   fetchOrders,
+  showRecentFilled,
 }
