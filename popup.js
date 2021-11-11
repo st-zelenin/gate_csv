@@ -1,10 +1,12 @@
 import GateExchange from './gate.js';
 import CoinbaseExchange from './coinbase.js';
+import CryptoComExchange from './crypto-com.js';
 
 const EXCHANGE_TYPES = {
   NOT_SUPPORTED: 'NOT_SUPPORTED',
   GATE: 'GATE',
   COINBASE: 'COINBASE',
+  CRYPTOCOM: 'CRYPTOCOM',
 }
 
 run();
@@ -22,6 +24,10 @@ async function run() {
     }
     case EXCHANGE_TYPES.COINBASE: {
       exchange = CoinbaseExchange;
+      break;
+    }
+    case EXCHANGE_TYPES.CRYPTOCOM: {
+      exchange = CryptoComExchange;
       break;
     }
     case EXCHANGE_TYPES.NOT_SUPPORTED:
@@ -58,6 +64,10 @@ function getExchangeType(url) {
 
   if (/.*pro\.coinbase\.com.*/i.test(url)) {
     return EXCHANGE_TYPES.COINBASE;
+  }
+
+  if (/.*crypto\.com.*/i.test(url)) {
+    return EXCHANGE_TYPES.CRYPTOCOM;
   }
 
   return EXCHANGE_TYPES.NOT_SUPPORTED;
